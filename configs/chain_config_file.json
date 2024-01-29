@@ -1,0 +1,52 @@
+{
+    "mqtt_sources": [
+        {
+            "name": "mqtt1",
+            "server": "192.168.10.100",
+            "port": 1885,
+            "username": "",
+            "password": "",
+            "topic": "raw"
+        }
+    ],
+    "postgres_sources": [
+        {
+            "name": "db1",
+            "connection_string": "postgresql://postgres:postgres@192.168.10.100/odtdata",
+            "polling_interval": 60,
+            "queries": ["SELECT * FROM table1", "SELECT * FROM table2"]
+        }
+    ],
+    "mqtt_targets": [
+        {
+            "name": "target1",
+            "server": "192.168.10.100",
+            "port": 1885,
+            "username": "target_user1",
+            "password": "target_pass1",
+            "topic": "odtdata"
+        }
+    ],
+    "data_processing_chains": [
+        {
+            "name": "chain1",
+            "steps": [
+                {
+                    "type": "mqtt_source",
+                    "source_name": "mqtt1",
+                    "topic": "topic1"
+                },
+                {
+                    "type": "sql_query",
+                    "source_name": "db1",
+                    "query": "SELECT * FROM processing_table"
+                },
+                {
+                    "type": "python_script",
+                    "script_path": "./external_scripts/map_hmi_data_to_odt.py"
+                }
+            ],
+            "targets": ["target1"]
+        } 
+    ]
+}

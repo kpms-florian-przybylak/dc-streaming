@@ -1,0 +1,73 @@
+{
+    "mqtt_sources": [
+        {
+            "name": "mqtt1",
+            "server": "mqtt.server1.com",
+            "port": 1883,
+            "username": "user1",
+            "password": "pass1",
+            "topics": ["topic1", "topic2"]
+        }
+        // Weitere MQTT-Quellen...
+    ],
+    "postgres_sources": [
+        {
+            "name": "db1",
+            "connection_string": "postgresql://user1:password1@localhost/dbname1",
+            "polling_interval": 60,
+            "queries": ["SELECT * FROM table1", "SELECT * FROM table2"]
+        }
+        // Weitere PostgreSQL-Datenquellen...
+    ],
+    "mqtt_targets": [
+        {
+            "name": "target1",
+            "server": "mqtt.target1.com",
+            "port": 1883,
+            "username": "target_user1",
+            "password": "target_pass1",
+            "topic": "target_topic1"
+        },
+        {
+            "name": "target2",
+            "server": "mqtt.target2.com",
+            "port": 1883,
+            "username": "target_user2",
+            "password": "target_pass2",
+            "topic": "target_topic2"
+        }
+        // Weitere MQTT-Ziele...
+    ],
+    "data_processing_chains": [
+        {
+            "name": "chain1",
+            "steps": [
+                {
+                    "type": "mqtt_source",
+                    "source_name": "mqtt1",
+                    "topic": "topic1"
+                },
+                {
+                    "type": "sql_query",
+                    "source_name": "db1",
+                    "query": "SELECT * FROM processing_table"
+                },
+                {
+                    "type": "python_script",
+                    "script_path": "path/to/script1.py"
+                }
+            ],
+            "targets": ["target1", "target2"]
+            // Weitere Ziele für chain1...
+        },
+        {
+            "name": "chain2",
+            "steps": [
+                // Schritte in chain2...
+            ],
+            "targets": ["target1"]
+            // Weitere Ziele für chain2...
+        }
+        // Weitere Verarbeitungsketten...
+    ]
+}
