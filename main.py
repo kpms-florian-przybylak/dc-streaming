@@ -18,10 +18,19 @@ def validate_and_get_configs(config_managers) -> Optional[Dict[str, Any]]:
     """
     # Validate each configuration using the respective manager
     validated_data = {key: manager.get_validated_json() for key, manager in config_managers.items()}
-    # If any configuration is invalid (has value None), log and return None
     if None in validated_data.values():
         logger.danger("Failed to validate configurations.")
         return None
+
+    # Ensure at least one source and one target are defined
+    chain_config = validated_data.get('chain_config', {})
+    if not chain_config.get('mqtt_sources') and not chain_config.get('postgres_sources'):
+        logger.danger("At least one source (MQTT or Postgres) must be defined.")
+        return None
+    if not chain_config.get('mqtt_targets'):
+        logger.danger("At least one MQTT target must be defined.")
+        return None
+
     return validated_data
 def extract_specific_configs(validated_data):
     if not validated_data:
