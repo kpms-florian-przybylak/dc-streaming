@@ -62,12 +62,12 @@ async def main():
         logger.info("New configurations loaded successfully.")
         specific_configs = extract_specific_configs(new_configs)
         #arget_clients = await initialize_used_targets(specific_configs)
-
+        print(specific_configs)
         # Starte und überwache die Clients
         #await start_and_monitor_clients(target_clients)
 
         client_manager = ClientManager(specific_configs)
-        await client_manager.initialize_and_run_clients()
+        #await client_manager.initialize_and_run_clients()
 
 
     else:

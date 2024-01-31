@@ -7,14 +7,16 @@ from helpers.custom_logging_helper import logger
 
 class MQTTClient:
 
-    def __init__(self, host: str, port: int, client_id: str, username: str = "", password: str = "", topic: ClientT=""):
+    def __init__(self, host: str, port: int, client_id: str, username: str = "", password: str = "", topics=None):
         logger.info("Initializing MQTT client...")
-        self.topic = topic
         self.hostname = host
         self.port = port
         self.client = aiomqtt.Client(hostname=host, port=port, client_id=client_id, username=username,
                                      password=password)
+        self.topics = topics if topics is not None else []  # Kann eine Liste von Topics sein
+
         self.processing_chain = None
+        self.subscribed_topics = set()  # Zum Speichern der abonnierten Topics
 
         logger.success(f"MQTT client initialized with Host: {host}, Port: {port}, Client ID: {client_id}")
 
@@ -32,23 +34,22 @@ class MQTTClient:
                 async with self.client:
                     logger.success("Connected to MQTT broker!")
                     async with self.client.messages() as messages:
-                        logger.info(f"Subscribing to topic: {self.topic}")
-                        await self.client.subscribe(self.topic)
-                        await self.handle_messages(messages)
+                        for topic in self.topics:
+                            logger.info(f"Subscribing to topic: {topic}")
+                            await self.subscribe_to_topic(topic)
             except aiomqtt.MqttError as e:
                 logger.danger(f"Failed to connect or lost connection: {e}.")
                 logger.warning(f"Reconnecting in {interval} seconds ...")
                 await asyncio.sleep(interval)
 
-    async def handle_messages(self, messages):
-        logger.info("Starting to handle incoming MQTT messages...")
-        async for msg in messages:
-            # Verarbeiten der Nachricht mit der übergebenen Verarbeitungskette
-            processed_message = self.process_message(msg.payload.decode()) if self.processing_chain else msg.payload.decode()
-            logger.info(f"Received message on topic {msg.topic}: {processed_message}")
-
-    async def run_client(self, processing_chain=None) -> None:
-        self.processing_chain = processing_chain  # Setzen der Verarbeitungskette
+    async def subscribe_to_topic(self, topic):
+        """Subscribt zu einem oder mehreren Topics."""
+        if topic not in self.subscribed_topics:
+            await self.client.subscribe(topic)
+            self.subscribed_topics.add(topic)
+            logger.info(f"Subscribed to topic: {topic}")
+    async def run_client(self) -> None:
+        """Hauptmethode zum Starten des Clients."""
         logger.info("Starting MQTT client...")
         await self.connect_to_broker()
 
@@ -58,6 +59,7 @@ class MQTTClient:
         return message
 
     async def publish_message(self, topic, message):
+        """Veröffentlicht eine Nachricht auf dem angegebenen Topic."""
         logger.info(f"Publishing message to topic {topic}...")
         await self.client.publish(topic, message.encode())
 

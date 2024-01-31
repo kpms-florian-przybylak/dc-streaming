@@ -16,29 +16,28 @@ def load_and_validate_configs(config_path: str):
     logger.info("Configurations validated successfully.")
     return validated_data
 
-
-
 def extract_specific_configs(validated_data):
     if not validated_data:
         return None
-
-    mqtt_sources = []
-    postgres_sources = []
-    mqtt_targets = []
-    data_chains = []
+    mqtt_clients = []
+    postgres_clients = []
+    valid_data_processing_chains = []
 
     chain_config = validated_data.get('chain_config')
     if chain_config:
-        mqtt_sources = chain_config.get('mqtt_sources', [])
-        postgres_sources = chain_config.get('postgres_sources', [])
-        mqtt_targets = chain_config.get('mqtt_targets', [])
-        data_chains = chain_config.get('data_processing_chains', [])
+        mqtt_clients = chain_config.get('mqtt_clients', [])
+        postgres_clients = chain_config.get('postgres_clients', [])
+        data_processing_chains = chain_config.get('data_processing_chains', [])
+
+        # Filter chains that have at least one source and one target
+        for chain in data_processing_chains:
+            if chain.get('sources') and chain.get('targets'):
+                valid_data_processing_chains.append(chain)
 
     return {
-        "mqtt_sources": mqtt_sources,
-        "postgres_sources": postgres_sources,
-        "mqtt_targets": mqtt_targets,
-        "data_chains": data_chains
+        "mqtt_clients": mqtt_clients,
+        "postgres_clients": postgres_clients,
+        "data_processing_chains": valid_data_processing_chains
     }
 
 def validate_and_get_configs(config_managers) -> Optional[Dict[str, Any]]:
@@ -54,13 +53,5 @@ def validate_and_get_configs(config_managers) -> Optional[Dict[str, Any]]:
         logger.danger("Failed to validate configurations.")
         return None
 
-    # Ensure at least one source and one target are defined
-    chain_config = validated_data.get('chain_config', {})
-    if not chain_config.get('mqtt_sources') and not chain_config.get('postgres_sources'):
-        logger.danger("At least one source (MQTT or Postgres) must be defined.")
-        return None
-    if not chain_config.get('mqtt_targets'):
-        logger.danger("At least one MQTT target must be defined.")
-        return None
-
+    # Ensure at least one source and one target are defined in the chain_config, if required
     return validated_data
