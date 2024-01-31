@@ -1,12 +1,13 @@
 import asyncio
 import aiomqtt
+from aiomqtt.client import ClientT
 
 from helpers.custom_logging_helper import logger
 
 
 class MQTTClient:
 
-    def __init__(self, host: str, port: int, client_id: str, username: str = "", password: str = "", topic=""):
+    def __init__(self, host: str, port: int, client_id: str, username: str = "", password: str = "", topic: ClientT=""):
         logger.info("Initializing MQTT client...")
         self.topic = topic
         self.hostname = host

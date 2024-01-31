@@ -3,11 +3,73 @@
 """
 Entry Point for the dc-streaming Service
 """
-from typing import Optional, Dict, Any
+import asyncio
+from typing import Optional, Dict, Any, Set
 from asyncio import run
 from helpers.custom_logging_helper import logger
 from helpers.json_file_manager import JSONFileManager
+from mqtt_client import MQTTClient
 from rule_chain import RuleChain
+
+
+async def start_and_monitor_clients(target_clients):
+    tasks = [asyncio.create_task(client.run_client()) for client in target_clients.values()]
+
+    # Warte auf ein Abbruchsignal (z.B. KeyboardInterrupt) oder eine andere Bedingung
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    except KeyboardInterrupt:
+        logger.info("Shutting down clients...")
+
+    # Beende alle Tasks ordentlich
+    for task in tasks:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    logger.info("All clients have been shut down.")
+async def initialize_target_client(name: str, specific_configs: Dict[str, Any], client_id: str) -> MQTTClient:
+    """
+    Initialisiert einen MQTTClient für das angegebene Ziel.
+    """
+    # Suche die Konfiguration für das gegebene Ziel
+    for target_config in specific_configs['mqtt_targets']:
+        if target_config['name'] == name:
+            # Erstelle eine Instanz des MQTTClient mit der gefundenen Konfiguration
+            mqtt_client = MQTTClient(
+                host=target_config['server'],
+                port=target_config['port'],
+                client_id=client_id,
+                username=target_config['username'],
+                password=target_config['password'],
+                topic=target_config['topic']
+            )
+            return mqtt_client
+    # Falls kein passendes Ziel gefunden wurde, gebe None zurück
+    return None
+
+async def initialize_used_targets(specific_configs: Dict[str, Any]):
+    used_targets: Set[str] = set()
+
+    # Sammle alle genutzten Ziele aus den Datenverarbeitungsketten
+    for chain in specific_configs['data_chains']:
+        for target in chain['targets']:
+            used_targets.add(target)
+
+    # Initialisiere MQTT-Clients nur für die genutzten Ziele
+    target_clients = {}
+    for name in used_targets:
+        client_id = f"client_{name}"  # Generiere eine eindeutige Client-ID
+        # Achte darauf, den korrigierten Funktionsnamen hier zu verwenden
+        client = await initialize_target_client(name, specific_configs, client_id)
+        if client:
+            target_clients[name] = client
+
+    return target_clients
+
+
 
 
 def validate_and_get_configs(config_managers) -> Optional[Dict[str, Any]]:
@@ -83,7 +145,8 @@ def map_sources_and_targets_to_chains(configs):
 
     return source_to_chain_map, target_to_chain_map, unused_sources, unused_targets
 
-if __name__ == '__main__':
+
+async def main():
     logger.info("Validating configurations...")
     chain_config_path = "./configs/chain_config_file.json"
     # Define configuration file paths
@@ -92,22 +155,19 @@ if __name__ == '__main__':
     }
 
     # Create JSON file manager for each config
-    config_managers: Dict[str, JSONFileManager] = {key: JSONFileManager(path) for key, path in
-                                                        configs.items()}
+    config_managers: Dict[str, JSONFileManager] = {key: JSONFileManager(path) for key, path in configs.items()}
     validated_data = {key: manager.get_validated_json() for key, manager in config_managers.items()}
     JSONFileManager(chain_config_path)
     new_configs = validate_and_get_configs(config_managers)
     specific_configs = extract_specific_configs(new_configs)
-    rule_chains = []
-    #source_map, target_map, unused_sources, unused_targets = map_sources_and_targets_to_chains(specific_configs)
-   # logger.info(f"Source to Chain Map: {source_map}")
-   # logger.info(f"Target to Chain Map: {target_map}")
-   # logger.info(f"Unused sources and targets: {unused_sources}, {unused_targets}")
-    logger.info(f"Specific Config to Chain Map: {specific_configs}")
-    for chain in specific_configs['data_chains']:
-        steps = chain['steps']
-        rule_chain = RuleChain(steps)
-        rule_chains.append(rule_chain)
+    target_clients = await initialize_used_targets(specific_configs)
+
+    # Starte und überwache die Clients
+    await start_and_monitor_clients(target_clients)
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
 
 
 
