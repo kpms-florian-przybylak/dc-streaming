@@ -22,8 +22,8 @@
             "name": "target1",
             "server": "192.168.10.100",
             "port": 1885,
-            "username": "target_user1",
-            "password": "target_pass1",
+            "username": "",
+            "password": "",
             "topic": "odtdata"
         }
     ],

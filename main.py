@@ -4,9 +4,10 @@
 Entry Point for the dc-streaming Service
 """
 from typing import Optional, Dict, Any
-
+from asyncio import run
 from helpers.custom_logging_helper import logger
 from helpers.json_file_manager import JSONFileManager
+from rule_chain import RuleChain
 
 
 def validate_and_get_configs(config_managers) -> Optional[Dict[str, Any]]:
@@ -54,6 +55,33 @@ def extract_specific_configs(validated_data):
         "mqtt_targets": mqtt_targets,
         "data_chains": data_chains
     }
+def map_sources_and_targets_to_chains(configs):
+    source_to_chain_map = {}
+    target_to_chain_map = {}
+
+    # Zuordnen von Quellen und Zielen zu den Datenverarbeitungsketten
+    for chain in configs['data_chains']:
+        for step in chain['steps']:
+            if 'source_name' in step:
+                source_to_chain_map.setdefault(step['source_name'], []).append(chain['name'])
+        for target in chain['targets']:
+            target_to_chain_map.setdefault(target, []).append(chain['name'])
+
+    # Identifizieren von ungenutzten Quellen und Zielen
+    all_sources = {src['name'] for src in configs['mqtt_sources']}
+    all_sources.update(src['name'] for src in configs['postgres_sources'])
+    unused_sources = all_sources.difference(source_to_chain_map.keys())
+
+    all_targets = {tgt['name'] for tgt in configs['mqtt_targets']}
+    unused_targets = all_targets.difference(target_to_chain_map.keys())
+
+    # Loggen der ungenutzten Quellen und Ziele
+    if unused_sources:
+        logger.warning(f"Unused sources: {unused_sources}. These connections will not be established until mapped in chains.")
+    if unused_targets:
+        logger.warning(f"Unused targets: {unused_targets}. These connections will not be established until mapped in chains.")
+
+    return source_to_chain_map, target_to_chain_map, unused_sources, unused_targets
 
 if __name__ == '__main__':
     logger.info("Validating configurations...")
@@ -70,4 +98,19 @@ if __name__ == '__main__':
     JSONFileManager(chain_config_path)
     new_configs = validate_and_get_configs(config_managers)
     specific_configs = extract_specific_configs(new_configs)
-    logger.info(specific_configs)
+    rule_chains = []
+    #source_map, target_map, unused_sources, unused_targets = map_sources_and_targets_to_chains(specific_configs)
+   # logger.info(f"Source to Chain Map: {source_map}")
+   # logger.info(f"Target to Chain Map: {target_map}")
+   # logger.info(f"Unused sources and targets: {unused_sources}, {unused_targets}")
+    logger.info(f"Specific Config to Chain Map: {specific_configs}")
+    for chain in specific_configs['data_chains']:
+        steps = chain['steps']
+        rule_chain = RuleChain(steps)
+        rule_chains.append(rule_chain)
+
+
+
+
+
+
