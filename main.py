@@ -10,7 +10,6 @@ from client_manager import ClientManager
 from config_manager import validate_and_get_configs, extract_specific_configs
 from helpers.custom_logging_helper import logger
 from helpers.json_file_manager import JSONFileManager
-from rule_chain_manager import RuleChainManager
 
 
 def map_sources_and_targets_to_chains(configs):

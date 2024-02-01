@@ -7,7 +7,7 @@ from rule_chain import RuleChain
 class ClientManager:
     def __init__(self, specific_configs):
         self.specific_configs = specific_configs
-        self.mqtt_clients = []
+        self.mqtt_clients = {}
         self.rule_chain = RuleChain(self.specific_configs["data_processing_chains"])
 
     async def initialize_mqtt_client(self, client_config):
@@ -18,7 +18,7 @@ class ClientManager:
             username=client_config['username'],
             password=client_config['password']
         )
-        self.mqtt_clients.append(mqtt_client)
+        self.mqtt_clients[client_config['id']] = mqtt_client
         logger.info(f"MQTT client for {client_config['id']} initialized.")
 
 
