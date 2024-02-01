@@ -7,12 +7,7 @@ class RuleChain:
     def initialize_chain(self):
         # Initialisieren der Verarbeitungskette basierend auf den übergebenen Schritten
         for step in self.steps:
-            if step["type"] == "mqtt_source":
-                self.chain.append(self.handle_mqtt_source)
-            elif step["type"] == "sql_query":
-                self.chain.append(self.handle_sql_query)
-            elif step["type"] == "python_script":
-                self.chain.append(self.handle_python_script)
+            print("step", step)
 
     async def execute_chain(self, message):
         # Ausführen der Verarbeitungskette auf die gegebene Nachricht
@@ -20,14 +15,13 @@ class RuleChain:
             message = await step(message)
         return message
 
-    async def handle_mqtt_source(self, message):
-        # Logik für MQTT-Quellen
+    async def handle_incoming_message(self, message):
+        print("in", message)
         return message
 
-    async def handle_sql_query(self, message):
-        # Logik für SQL-Abfragen
+    async def handle_processing_message(self, message):
+        print("processing", message)
         return message
-
-    async def handle_python_script(self, message):
-        # Logik für die Ausführung eines Python-Skripts
+    async def handle_outgoing_message(self, message):
+        print("out", message)
         return message

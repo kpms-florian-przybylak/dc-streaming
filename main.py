@@ -10,9 +10,7 @@ from client_manager import ClientManager
 from config_manager import validate_and_get_configs, extract_specific_configs
 from helpers.custom_logging_helper import logger
 from helpers.json_file_manager import JSONFileManager
-
-
-
+from rule_chain_manager import RuleChainManager
 
 
 def map_sources_and_targets_to_chains(configs):
@@ -61,13 +59,8 @@ async def main():
     if new_configs:
         logger.info("New configurations loaded successfully.")
         specific_configs = extract_specific_configs(new_configs)
-        #arget_clients = await initialize_used_targets(specific_configs)
-        print(specific_configs)
-        # Starte und überwache die Clients
-        #await start_and_monitor_clients(target_clients)
-
         client_manager = ClientManager(specific_configs)
-        #await client_manager.initialize_and_run_clients()
+        await client_manager.initialize_and_run_clients()
 
 
     else:
