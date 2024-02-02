@@ -1,3 +1,6 @@
+from helpers.custom_logging_helper import logger
+
+
 class RuleChain:
     def __init__(self, steps):
         self.steps = steps
@@ -15,8 +18,8 @@ class RuleChain:
             message = await step(message)
         return message
 
-    async def handle_incoming_message(self, message):
-        print("in", message)
+    async def handle_incoming_message(self, message, client_id):
+        logger.info(f"Received message from client: {client_id} on topic {message.topic}: {message.payload.decode()}")
         return message
 
     async def handle_processing_message(self, message):

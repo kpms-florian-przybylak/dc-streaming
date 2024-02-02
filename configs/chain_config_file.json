@@ -30,9 +30,9 @@
                     "topic": "analytics"
                 },
                 {
-                    "type": "mqtt",
-                    "id": "mqtt1",
-                    "topic": "analytics"
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "status"
                 }
             ],
             "processing_steps": [
