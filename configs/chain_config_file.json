@@ -43,13 +43,18 @@
                 },
                 {
                     "type": "python_script",
-                    "script_path": "./external_scripts/map_hmi_data_to_odt.py"
+                    "script_path": "map_hmi_data_to_odt.py"
                 }
             ],
             "targets": [{
                     "client_type": "mqtt",
                     "client_id": "mqtt1",
                     "topic": "odtdata"
+                },
+                {
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "test"
                 }]
         } 
     ]

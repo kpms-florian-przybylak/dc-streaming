@@ -1,7 +1,11 @@
 import json
-
+import subprocess
+import os
 from helpers.custom_logging_helper import logger
 from typing import Dict, List
+
+# Ermitteln des Basisverzeichnisses des Projekts
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class RuleChain:
@@ -18,11 +22,50 @@ class RuleChain:
         for chain in self.chains_config:
             print("Initializing step", chain)
 
+    async def execute_sql_query(self, query, db_id, input_message):
+        print(f"Executing SQL query on {db_id}: {query}")
+        # Hier sollte die tatsächliche SQL-Abfrage ausgeführt und das Ergebnis zurückgegeben werden
+        # Beispiel: Ändern der input_message basierend auf dem Ergebnis der SQL-Abfrage
+        modified_message = input_message  # Modifizieren Sie diese Zeile entsprechend der tatsächlichen Abfrageergebnisse
+        return modified_message
+
+    async def execute_python_script(self, script_path, input_message):
+        full_script_path = os.path.join(base_dir, 'dc-streaming', 'configs', 'external_scripts', script_path)
+        print(f"Executing Python script: {full_script_path}")
+        # Beispiel für die Ausführung eines Python-Skripts und die Rückgabe eines modifizierten Nachrichtenobjekts
+        try:
+            completed_process = subprocess.run(['python3', full_script_path, json.dumps(input_message)], timeout=10,
+                                               capture_output=True, text=True, check=True)
+            if completed_process.returncode != 0:
+                print(f"Error executing script {script_path}: {completed_process.stderr}")
+                return input_message  # Bei einem Fehler die ursprüngliche Nachricht zurückgeben
+            modified_message = json.loads(completed_process.stdout) if completed_process.stdout else input_message
+            return modified_message
+        except subprocess.CalledProcessError as e:
+            print(f"Script execution failed with non-zero exit status: {e.returncode}, {e.stderr}")
+        except subprocess.TimeoutExpired:
+            print(f"Script execution timed out: {script_path}")
+        except Exception as e:
+            print(f"Unexpected error executing script {script_path}: {str(e)}")
+            return input_message  # Bei einem Fehler die ursprüngliche Nachricht zurückgeben
+
     async def process_step(self, message, client_id):
-        print("process step for", client_id)
-        # Hier würde die spezifische Logik für jeden Schritt implementiert,
-        # z.B. SQL-Abfrage ausführen oder Python-Skript aufrufen
-        return message
+        logger.info("Processing step for client_id: %s with message: %s", client_id, message)
+        modified_message = message  # Starten mit der ursprünglichen Nachricht
+        chain_ids = self.find_chains_by_client_id(client_id)
+        for chain_id in chain_ids:
+            chain_config = next((chain for chain in self.chains_config if chain['id'] == chain_id), None)
+            if chain_config:
+                for step in chain_config['processing_steps']:
+                    if step['type'] == 'sql_query':
+                        modified_message = await self.execute_sql_query(step['query'], step['id'], modified_message)
+                    elif step['type'] == 'python_script':
+                        modified_message = await self.execute_python_script(step['script_path'], modified_message)
+                    else:
+                        logger.warning("Unknown step type: %s", step['type'])
+                await self.forward_to_targets(chain_id, modified_message)
+        return modified_message
+
     def find_chains_by_client_id(self, client_id: str) -> List[str]:
         """Finde alle Chain IDs, die einer gegebenen Client ID entsprechen."""
         matching_chains = []
@@ -56,8 +99,8 @@ class RuleChain:
                     logger.info(f"Message sent to {target['client_id']} on topic {target['topic']}")
 
     async def handle_incoming_message(self, message, client_id):
-        logger.info(f"Received message from client: {client_id} on topic {message.topic}: {message.payload.decode()}")
         payload = message.payload.decode()  # Nimmt an, dass die Nutzlast eine Zeichenkette ist
+        logger.info(f"Received message from client: {client_id} on topic {message.topic}: {payload}")
         try:
             decoded_message = json.loads(payload)
 
