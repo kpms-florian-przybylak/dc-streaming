@@ -53,7 +53,7 @@ class CustomFormatter(logging.Logger):
 
 
 # Create a CustomFormatter logger named 'opc_client' with DEBUG level enabled
-logger = CustomFormatter("opc_client")
+logger = CustomFormatter("dc streaming")
 logger.setLevel(logging.DEBUG)
 
 # Create a console handler for logging, and set its level to DEBUG
