@@ -11,9 +11,11 @@
     "postgres_clients": [
         {
             "id": "db1",
-            "connection_string": "postgresql://postgres:postgres@192.168.10.100/odtdata",
-            "polling_interval": 60,
-            "queries": ["SELECT * FROM table1", "SELECT * FROM table2"]
+            "connection_string": "postgresql://postgres:postgres@192.168.10.100/odtdata"
+        },
+        {
+            "id": "db2",
+            "connection_string": "postgresql://postgres:postgres@192.168.10.100/inspections"
         }
     ],
     "data_processing_chains": [
@@ -23,6 +25,12 @@
                     "client_type": "mqtt",
                     "client_id": "mqtt1",
                     "topic": "raw"
+                },
+                {
+                    "client_type": "postgres",
+                    "client_id": "db2",
+                    "polling_interval": 60,
+                    "query": "SELECT * FROM table1"
                 },
                 {
                     "client_type": "mqtt",
@@ -37,11 +45,6 @@
             ],
             "processing_steps": [
                 {
-                    "type": "sql_query",
-                    "id": "db1",
-                    "query": "SELECT * FROM processing_table"
-                },
-                {
                     "type": "python_script",
                     "script_path": "map_hmi_data_to_odt.py"
                 }
@@ -55,6 +58,13 @@
                     "client_type": "mqtt",
                     "client_id": "mqtt1",
                     "topic": "test"
+                },
+                {
+                    "client_type": "postgres",
+                    "client_id": "db2",
+                    "insert_statement": "INSERT INTO inspection_results (column1, column2) VALUES (:value1, :value2)",
+                    "batch_size": 100,
+                    "max_batch_time": 30
                 }]
         } 
     ]
