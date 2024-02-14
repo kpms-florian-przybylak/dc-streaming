@@ -63,6 +63,7 @@ class RuleChain:
             print(f"Unexpected error executing script {script_path}: {str(e)}")
             return input_message  # Bei einem Fehler die ursprüngliche Nachricht zurückgeben
 
+
     async def process_step(self, message, client_id):
         logger.info("Processing step for client_id: %s with message: %s", client_id, message)
         modified_message = message  # Starten mit der ursprünglichen Nachricht

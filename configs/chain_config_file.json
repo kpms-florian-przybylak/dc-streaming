@@ -28,9 +28,9 @@
                 },
                 {
                     "client_type": "postgres",
-                    "client_id": "db2",
-                    "polling_interval": 60,
-                    "query": "SELECT * FROM table1"
+                    "client_id": "db1",
+                    "polling_interval": 10,
+                    "query": "SELECT * from data_pipeline.value_entries limit 50"
                 },
                 {
                     "client_type": "mqtt",

@@ -43,7 +43,8 @@ class ClientManager:
         """
         for db_client_config in self.specific_configs['postgres_clients']:
             db_client = DBClient(
-                connection_string=db_client_config['connection_string']
+                client_id = db_client_config['id'],
+                connection_string = db_client_config['connection_string']
             )
             await db_client.connect_and_verify()
             self.db_clients[db_client_config['id']] = db_client
@@ -52,6 +53,19 @@ class ClientManager:
 
 
 
+    async def initialize_db_polling(self):
+        """
+        Initializes polling for configured PostgreSQL queries.
+        """
+        for chain_config in self.specific_configs["data_processing_chains"]:
+            for source in chain_config.get("sources", []):
+                if source["client_type"] == "postgres":
+                    db_client = self.db_clients[source["client_id"]]
+                    polling_interval = source.get("polling_interval", 60)  # Standardintervall: 60 Sekunden
+                    query = source.get("query")
+                    # Startet das Polling für die SQL-Abfrage
+                    asyncio.create_task(db_client.start_polling_query(query, polling_interval, self.rule_chain))
+                    logger.info(f"Initialized polling for query '{query}' every {polling_interval} seconds.")
     async def subscribe_to_topics(self):
         for chain_config in self.specific_configs["data_processing_chains"]:
             topics_by_client = {}  # Sammeln von Topics nach Client-ID
@@ -75,12 +89,19 @@ class ClientManager:
         self.rule_chain =  RuleChain(self.specific_configs["data_processing_chains"], targets, self.mqtt_clients, self.db_clients)
         for client_id, mqtt_client in self.mqtt_clients.items():
             mqtt_client.set_processing_chain(self.rule_chain)
+
     async def initialize_and_run_clients(self):
         """
-        Initialize, connect, and set up MQTT clients.
+        Initialize, connect, and set up all clients and start polling, all in parallel.
         """
-        await self.initialize_mqtt_clients()
-        await self.initialize_db_clients()
-        # Die RuleChain wird hier initialisiert, um sicherzustellen, dass alle MQTT-Clients verfügbar sind
-        await self.setup_rule_chains()
-        await self.subscribe_to_topics()
+        init_tasks = [
+            self.initialize_mqtt_clients(),
+            self.initialize_db_clients(),
+            self.setup_rule_chains(),
+            self.subscribe_to_topics(),
+            self.initialize_db_polling()
+        ]
+
+        # Warte auf die Fertigstellung der Initialisierungsaufgaben, außer DB Polling
+        await asyncio.gather(*init_tasks)
+
