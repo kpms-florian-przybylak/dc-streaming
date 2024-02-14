@@ -1,4 +1,6 @@
 import asyncio
+
+from db_client import DBClient
 from mqtt_client import MQTTClient
 from helpers.custom_logging_helper import logger
 from rule_chain import RuleChain
@@ -7,6 +9,7 @@ class ClientManager:
     def __init__(self, specific_configs):
         self.specific_configs = specific_configs
         self.mqtt_clients = {}
+        self.db_clients = {}
         # Extrahieren der Ziel-Informationen
         targets = self.extract_targets(specific_configs["data_processing_chains"])
         # Initialisierung der RuleChain mit Schritten, Zielen und MQTT-Clients
@@ -34,6 +37,18 @@ class ClientManager:
             self.mqtt_clients[mqtt_client_config['id']] = mqtt_client
             logger.info(f"MQTT client for {mqtt_client_config['id']} initialized.")
 
+    async def initialize_db_clients(self):
+        """
+        Initialize all PostgreSQL clients.
+        """
+        for db_client_config in self.specific_configs['postgres_clients']:
+            db_client = DBClient(
+                connection_string=db_client_config['connection_string']
+            )
+            await db_client.connect_and_verify()
+            self.db_clients[db_client_config['id']] = db_client
+            logger.info(f"DB client for {db_client_config['id']} initialized.")
+            asyncio.create_task(db_client.start_periodic_verification(30))
 
 
 
@@ -57,7 +72,7 @@ class ClientManager:
     async def setup_rule_chains(self):
         # Stellen Sie sicher, dass die RuleChain jetzt mit allen notwendigen Informationen initialisiert wird
         targets = self.extract_targets(self.specific_configs["data_processing_chains"])
-        self.rule_chain = RuleChain(self.specific_configs["data_processing_chains"], targets, self.mqtt_clients)
+        self.rule_chain =  RuleChain(self.specific_configs["data_processing_chains"], targets, self.mqtt_clients, self.db_clients)
         for client_id, mqtt_client in self.mqtt_clients.items():
             mqtt_client.set_processing_chain(self.rule_chain)
     async def initialize_and_run_clients(self):
@@ -65,6 +80,7 @@ class ClientManager:
         Initialize, connect, and set up MQTT clients.
         """
         await self.initialize_mqtt_clients()
+        await self.initialize_db_clients()
         # Die RuleChain wird hier initialisiert, um sicherzustellen, dass alle MQTT-Clients verfügbar sind
         await self.setup_rule_chains()
         await self.subscribe_to_topics()
