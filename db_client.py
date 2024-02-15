@@ -1,5 +1,4 @@
 import asyncio
-import json
 
 from sqlalchemy import create_engine, exc, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -9,8 +8,10 @@ from helpers.custom_json_encoder import custom_json_dumps
 from helpers.custom_logging_helper import logger
 from uuid import uuid4
 
-
-
+# TODO: add db target
+# TODO: Versionierung
+# TODO:  grouplogik implementieren
+# TODO: Testen
 class DBClient:
     def __init__(self, client_id, connection_string, retry_limit=-1, retry_interval=10):
         self.connection_string = connection_string
@@ -100,6 +101,24 @@ class DBClient:
             except Exception as e:
                 logger.error(f"Failed to execute polling query: {e}")
             await asyncio.sleep(polling_interval)
+
+    async def execute_bulk_insert(self, insert_statement, data, batch_size=100):
+        try:
+            # Aufteilen der Daten in Batches
+            for i in range(0, len(data), batch_size):
+                batch_data = data[i:i + batch_size]
+                # Bereite eine Liste von Statements vor, die ausgeführt werden sollen
+                statements = [text(insert_statement).bindparams(**record) for record in batch_data]
+                # Ausführen der Statements in einem Batch
+                self.session.execute(text("BEGIN"))  # Starte eine Transaktion, falls nicht automatisch verwaltet
+                for stmt in statements:
+                    self.session.execute(stmt)
+                self.session.commit()  # Commit nach dem Ausführen der Batches
+                logger.info(f"Bulk insert completed for {len(batch_data)} records.")
+        except Exception as e:
+            logger.error(f"Failed to execute bulk insert: {e}")
+            self.session.rollback()  # Rollback im Fehlerfall
+
     def close(self):
         """
         Closes the database connection.

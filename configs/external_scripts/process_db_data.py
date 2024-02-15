@@ -23,6 +23,8 @@ def main():
         input_arg = sys.argv[1]
         # Verarbeitet die Eingabe und erstellt Datensätze für den Bulk Insert
         records = process_input(input_arg)
+
+
     else:
         records = [{'error': "Kein Argument übergeben."}]
 

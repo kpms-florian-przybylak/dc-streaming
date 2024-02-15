@@ -2,15 +2,14 @@ import json
 import sys
 
 
-def process_input(input_arg):
+def process_input(input_dict):
     """
-    Verarbeitet die übergebene Eingabe und erstellt ein Dictionary für einen Datensatz,
+    Verarbeitet die übergebene Eingabe als Dictionary und erstellt ein Dictionary für einen Datensatz,
     der in die test_table eingefügt werden kann.
     """
-    # Angenommen, input_arg ist eine kommaseparierte Liste von Werten,
-    # die als separate Datensätze eingefügt werden sollen.
-    values = input_arg.split(',') if input_arg else []
-    records = [{'value': value.strip()} for value in values if value.strip()]
+    # Direkte Verarbeitung des Eingabe-Dictionarys
+    # Hier könntest du die Logik anpassen, um mit den Werten aus dem Dictionary zu arbeiten
+    records = [input_dict]  # Direkte Verwendung des Eingabe-Dictionarys als Datensatz
 
     if records:
         return records
@@ -20,9 +19,11 @@ def process_input(input_arg):
 
 def main():
     if len(sys.argv) > 1:
-        input_arg = sys.argv[1]
+        input_dict = sys.argv[1]
         # Verarbeitet die Eingabe und erstellt Datensätze für den Bulk Insert
-        records = process_input(input_arg)
+        records = process_input(input_dict)
+
+
     else:
         records = [{'error': "Kein Argument übergeben."}]
 

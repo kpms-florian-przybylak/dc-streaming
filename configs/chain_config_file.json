@@ -11,7 +11,7 @@
     "postgres_clients": [
         {
             "id": "db1",
-            "connection_string": "postgresql://postgres:postgres@192.168.10.100/odtdata"
+            "connection_string": "postgresql://postgres:postgres@localhost/odtdata"
         },
         {
             "id": "db2",
@@ -25,12 +25,6 @@
                     "client_type": "mqtt",
                     "client_id": "mqtt1",
                     "topic": "raw"
-                },
-                {
-                    "client_type": "postgres",
-                    "client_id": "db1",
-                    "polling_interval": 10,
-                    "query": "SELECT * from data_pipeline.value_entries limit 50"
                 },
                 {
                     "client_type": "mqtt",
@@ -58,14 +52,58 @@
                     "client_type": "mqtt",
                     "client_id": "mqtt1",
                     "topic": "test"
+                }]
+        },
+                {
+            "id": "chain2",
+            "sources": [
+                {
+                    "client_type": "postgres",
+                    "client_id": "db1",
+                    "polling_interval": 10,
+                    "query": "SELECT * from data_pipeline.value_entries limit 50"
+                }
+            ],
+            "processing_steps": [
+                {
+                    "type": "python_script",
+                    "script_path": "process_db_data.py"
+                }
+            ],
+            "targets": [{
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "result_chain2"
                 },
                 {
                     "client_type": "postgres",
-                    "client_id": "db2",
-                    "insert_statement": "INSERT INTO inspection_results (column1, column2) VALUES (:value1, :value2)",
+                    "client_id": "db1",
+                    "insert_statement": "INSERT INTO streaming_dev.test_table (value_id, entity_object_id, value, inserted_at) VALUES (:value_id, :entity_object_id, :value, :inserted_at)",
                     "batch_size": 100,
                     "max_batch_time": 30
+                }
+            ]
+        },
+                {
+            "id": "chain3",
+            "sources": [
+                {
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "odtdata"
+                }
+            ],
+            "processing_steps": [
+                {
+                    "type": "python_script",
+                    "script_path": "process_odtdata.py"
+                }
+            ],
+            "targets": [{
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "result_chain3"
                 }]
-        } 
+        }
     ]
 }

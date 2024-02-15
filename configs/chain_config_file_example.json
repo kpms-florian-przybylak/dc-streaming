@@ -1,73 +1,109 @@
 {
-    "mqtt_sources": [
+    "mqtt_clients": [
         {
-            "name": "mqtt1",
-            "server": "mqtt.server1.com",
-            "port": 1883,
-            "username": "user1",
-            "password": "pass1",
-            "topics": ["topic1", "topic2"]
+            "id": "mqtt1",
+            "server": "192.168.10.100",
+            "port": 1885,
+            "username": "",
+            "password": ""
         }
-        // Weitere MQTT-Quellen...
     ],
-    "postgres_sources": [
+    "postgres_clients": [
         {
-            "name": "db1",
-            "connection_string": "postgresql://user1:password1@localhost/dbname1",
-            "polling_interval": 60,
-            "queries": ["SELECT * FROM table1", "SELECT * FROM table2"]
-        }
-        // Weitere PostgreSQL-Datenquellen...
-    ],
-    "mqtt_targets": [
-        {
-            "name": "target1",
-            "server": "mqtt.target1.com",
-            "port": 1883,
-            "username": "target_user1",
-            "password": "target_pass1",
-            "topic": "target_topic1"
+            "id": "db1",
+            "connection_string": "postgresql://postgres:postgres@localhost/odtdata"
         },
         {
-            "name": "target2",
-            "server": "mqtt.target2.com",
-            "port": 1883,
-            "username": "target_user2",
-            "password": "target_pass2",
-            "topic": "target_topic2"
+            "id": "db2",
+            "connection_string": "postgresql://postgres:postgres@192.168.10.100/inspections"
         }
-        // Weitere MQTT-Ziele...
     ],
     "data_processing_chains": [
         {
-            "name": "chain1",
-            "steps": [
-                {
-                    "type": "mqtt_source",
-                    "source_name": "mqtt1",
-                    "topic": "topic1"
+            "id": "chain1",
+            "sources": [{
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "raw"
                 },
                 {
-                    "type": "sql_query",
-                    "source_name": "db1",
-                    "query": "SELECT * FROM processing_table"
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "analytics"
                 },
                 {
-                    "type": "python_script",
-                    "script_path": "path/to/script1.py"
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "status"
                 }
             ],
-            "targets": ["target1", "target2"]
-            // Weitere Ziele für chain1...
-        },
-        {
-            "name": "chain2",
-            "steps": [
-                // Schritte in chain2...
+            "processing_steps": [
+                {
+                    "type": "python_script",
+                    "script_path": "map_hmi_data_to_odt.py"
+                }
             ],
-            "targets": ["target1"]
-            // Weitere Ziele für chain2...
+            "targets": [{
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "odtdata"
+                },
+                {
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "test"
+                }]
+        },
+                {
+            "id": "chain2",
+            "sources": [
+                {
+                    "client_type": "postgres",
+                    "client_id": "db1",
+                    "polling_interval": 10,
+                    "query": "SELECT * from data_pipeline.value_entries limit 50"
+                }
+            ],
+            "processing_steps": [
+                {
+                    "type": "python_script",
+                    "script_path": "process_db_data.py"
+                }
+            ],
+            "targets": [{
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "result_chain2"
+                },
+                {
+                    "client_type": "postgres",
+                    "client_id": "db1",
+                    "insert_statement": "INSERT INTO streaming_dev.test_table (value_id, entity_object_id, value, inserted_at) VALUES (:value_id, :entity_object_id, :value, :inserted_at)",
+                    "batch_size": 100,
+                    "max_batch_time": 30
+                }
+            ]
+        },
+                {
+            "id": "chain3",
+            "sources": [
+                {
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "odtdata"
+                }
+            ],
+            "processing_steps": [
+                {
+                    "type": "python_script",
+                    "script_path": "process_odtdata.py"
+                }
+            ],
+            "targets": [{
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "result_chain3"
+                }]
         }
-        // Weitere Verarbeitungsketten...
     ]
 }
