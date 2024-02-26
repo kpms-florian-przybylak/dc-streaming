@@ -11,11 +11,15 @@
     "postgres_clients": [
         {
             "id": "db1",
-            "connection_string": "postgresql://postgres:postgres@localhost/odtdata"
+            "connection_string": "postgresql://postgres:postgres@192.168.10.100/odtdata"
         },
         {
             "id": "db2",
             "connection_string": "postgresql://postgres:postgres@192.168.10.100/inspections"
+        },
+        {
+            "id": "db3",
+            "connection_string": "postgresql://postgres:postgres@localhost/odtdata"
         }
     ],
     "data_processing_chains": [
@@ -77,7 +81,7 @@
                 },
                 {
                     "client_type": "postgres",
-                    "client_id": "db1",
+                    "client_id": "db3",
                     "insert_statement": "INSERT INTO streaming_dev.test_table (value_id, entity_object_id, value, inserted_at) VALUES (:value_id, :entity_object_id, :value, :inserted_at)",
                     "batch_size": 100,
                     "max_batch_time": 30
