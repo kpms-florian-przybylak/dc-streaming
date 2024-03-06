@@ -6,7 +6,11 @@ from helpers.custom_logging_helper import logger
 from typing import Dict, List
 import time
 # Ermitteln des Basisverzeichnisses des Projekts
-base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+python_interpreter = os.getenv('PYTHON_INTERPRETER_PATH', 'python3')  # Standardmäßig 'python3', falls nicht definiert
+
+
 
 
 class RuleChain:
@@ -44,24 +48,24 @@ class RuleChain:
             # Keine Änderungen, kein Bedarf, die Abfrage erneut auszuführen
             return input_message
     async def execute_python_script(self, script_path, input_message):
-        full_script_path = os.path.join(base_dir, 'dc-streaming', 'configs', 'external_scripts', script_path)
-        print(f"Executing Python script: {input_message}")
-
-        # Beispiel für die Ausführung eines Python-Skripts und die Rückgabe eines modifizierten Nachrichtenobjekts
+        full_script_path = os.path.join(script_dir, 'configs', 'external_scripts', script_path)
+        # Konvertiere das input_message Dictionary in einen JSON-String
+        input_message_str = json.dumps(input_message)
+        logger.info(f"Executing Python script: {input_message}")
         try:
-            completed_process = subprocess.run(['python3', full_script_path, input_message], timeout=10,
+            completed_process = subprocess.run([python_interpreter, full_script_path, input_message_str], timeout=10,
                                                capture_output=True, text=True, check=True)
             if completed_process.returncode != 0:
-                print(f"Error executing script {script_path}: {completed_process.stderr}")
+                logger.error(f"Error executing script {script_path}: {completed_process.stderr}")
                 return input_message  # Bei einem Fehler die ursprüngliche Nachricht zurückgeben
             modified_message = json.loads(completed_process.stdout) if completed_process.stdout else input_message
             return modified_message
         except subprocess.CalledProcessError as e:
-            print(f"Script execution failed with non-zero exit status: {e.returncode}, {e.stderr}")
+            logger.error(f"Script execution failed with non-zero exit status: {e.returncode}, {e.stderr}")
         except subprocess.TimeoutExpired:
-            print(f"Script execution timed out: {script_path}")
+            logger.warning(f"Script execution timed out: {script_path}")
         except Exception as e:
-            print(f"Unexpected error executing script {script_path}: {str(e)}")
+            logger.error(f"Unexpected error executing script {script_path}: {str(e)}")
             return input_message  # Bei einem Fehler die ursprüngliche Nachricht zurückgeben
 
     async def process_step(self, message, client_id):
