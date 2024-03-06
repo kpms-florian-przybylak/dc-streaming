@@ -3,6 +3,7 @@ import asyncio
 from db_client import DBClient
 from mqtt_client import MQTTClient
 from helpers.custom_logging_helper import logger
+from redis_client import RedisClient
 from rule_chain import RuleChain
 
 class ClientManager:
@@ -10,17 +11,60 @@ class ClientManager:
         self.specific_configs = specific_configs
         self.mqtt_clients = {}
         self.db_clients = {}
-        # Extrahieren der Ziel-Informationen
-        targets = self.extract_targets(specific_configs["data_processing_chains"])
-        # Initialisierung der RuleChain mit Schritten, Zielen und MQTT-Clients
-        self.rule_chain = None  # Dies wird in initialize_and_run_clients gesetzt
-
+        self.redis_clients = {}
+        self.targets = self.extract_targets(specific_configs["data_processing_chains"])
+        self.rule_chain = None
     def extract_targets(self, chains_config):
         targets = []
         for chain in chains_config:
             if "targets" in chain:
                 targets.extend(chain["targets"])
         return targets
+    async def initialize_and_run_clients(self):
+        """
+        Asynchronously initialize, connect, and set up all clients. Start polling and subscriptions.
+        This is the correct place to await the initialization tasks.
+        """
+        # First, ensure all clients are initialized. This includes MQTT, DB, and Redis clients.
+        await self.initialize_all_clients()
+
+        # Now that all clients are initialized, you can proceed with setting up rule chains,
+        # subscribing to topics, and initializing DB polling.
+        # Note: setup_rule_chains is not async and does not need to be awaited.
+        self.setup_rule_chains()
+
+        # Since subscribe_to_topics and initialize_db_polling are async,
+        # they should be awaited or scheduled with asyncio.create_task if they are intended to run concurrently.
+        await asyncio.gather(
+            self.subscribe_to_topics(),
+            self.initialize_db_polling()
+        )
+    async def initialize_all_clients(self):
+        """
+        A revised method to correctly initialize clients asynchronously.
+        """
+        await asyncio.gather(
+            self.initialize_mqtt_clients(),
+            self.initialize_db_clients(),
+            self.initialize_redis_clients()
+        )
+
+
+    async def initialize_redis_clients(self):
+        """
+        Initialize all Redis clients.
+        """
+        for redis_client_config in self.specific_configs.get('redis_clients', []):
+            if redis_client_config['id'] not in self.redis_clients:
+                redis_client = RedisClient(
+                    client_id=redis_client_config['id'],
+                    host=redis_client_config['host'],
+                    port=redis_client_config['port'],
+                    db=redis_client_config['db']
+                )
+                self.redis_clients[redis_client_config['id']] = redis_client
+                logger.success(f"Redis client for {redis_client_config['id']} initialized.")
+
 
     async def initialize_mqtt_clients(self):
         """
@@ -35,7 +79,7 @@ class ClientManager:
                 password=mqtt_client_config['password']
             )
             self.mqtt_clients[mqtt_client_config['id']] = mqtt_client
-            logger.info(f"MQTT client for {mqtt_client_config['id']} initialized.")
+            logger.success(f"MQTT client for {mqtt_client_config['id']} initialized.")
 
     async def initialize_db_clients(self):
         """
@@ -48,7 +92,7 @@ class ClientManager:
             )
             await db_client.connect_and_verify()
             self.db_clients[db_client_config['id']] = db_client
-            logger.info(f"DB client for {db_client_config['id']} initialized.")
+            logger.success(f"DB client for {db_client_config['id']} initialized.")
             asyncio.create_task(db_client.start_periodic_verification(30))
 
 
@@ -107,25 +151,12 @@ class ClientManager:
         logger.info(f"Subscribing client '{client.client_id}' to keepalive topic: {keepalive_topic}")
         await client.subscribe_to_topics([keepalive_topic])
 
-    async def setup_rule_chains(self):
-        # Stellen Sie sicher, dass die RuleChain jetzt mit allen notwendigen Informationen initialisiert wird
-        targets = self.extract_targets(self.specific_configs["data_processing_chains"])
-        self.rule_chain =  RuleChain(self.specific_configs["data_processing_chains"], targets, self.mqtt_clients, self.db_clients)
-        for client_id, mqtt_client in self.mqtt_clients.items():
-            mqtt_client.set_processing_chain(self.rule_chain)
 
-    async def initialize_and_run_clients(self):
+    def setup_rule_chains(self):
         """
-        Initialize, connect, and set up all clients and start polling, all in parallel.
+        Sets up rule chains with steps, targets, and clients.
         """
-        init_tasks = [
-            self.initialize_mqtt_clients(),
-            self.initialize_db_clients(),
-            self.setup_rule_chains(),
-            self.subscribe_to_topics(),
-            self.initialize_db_polling()
-        ]
+        self.rule_chain = RuleChain(self.specific_configs["data_processing_chains"], self.targets, self.mqtt_clients, self.db_clients, self.redis_clients)
 
-        # Warte auf die Fertigstellung der Initialisierungsaufgaben, außer DB Polling
-        await asyncio.gather(*init_tasks)
+
 
