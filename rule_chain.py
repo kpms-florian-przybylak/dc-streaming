@@ -14,7 +14,7 @@ python_interpreter = os.getenv('PYTHON_INTERPRETER_PATH', 'python3')  # Standard
 
 
 class RuleChain:
-    def __init__(self, chains_config, targets=None, mqtt_clients=None, db_clients=None):
+    def __init__(self, chains_config, targets=None, mqtt_clients=None, db_clients=None, redis_client=None):
         self.targets = targets if targets is not None else []
         self.chain = []
         self.mqtt_clients = mqtt_clients
@@ -22,6 +22,7 @@ class RuleChain:
         self.initialize_chain()
         self.last_query_time = {}
         self.db_clients = db_clients
+        self.redis_client = redis_client
 
     def initialize_chain(self):
         # Initialisieren der Verarbeitungskette basierend auf den übergebenen Schritten
