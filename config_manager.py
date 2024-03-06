@@ -21,12 +21,14 @@ def extract_specific_configs(validated_data):
         return None
     mqtt_clients = []
     postgres_clients = []
+    redis_clients = []
     valid_data_processing_chains = []
 
     chain_config = validated_data.get('chain_config')
     if chain_config:
         mqtt_clients = chain_config.get('mqtt_clients', [])
         postgres_clients = chain_config.get('postgres_clients', [])
+        redis_clients = chain_config.get('redis_clients', [])
         data_processing_chains = chain_config.get('data_processing_chains', [])
 
         # Filter chains that have at least one source and one target
@@ -37,6 +39,7 @@ def extract_specific_configs(validated_data):
     return {
         "mqtt_clients": mqtt_clients,
         "postgres_clients": postgres_clients,
+        "redis_clients": redis_clients,
         "data_processing_chains": valid_data_processing_chains
     }
 
