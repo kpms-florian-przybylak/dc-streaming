@@ -1,7 +1,6 @@
 import json
 import sys
 
-
 def process_input(input_arg):
     """
     Verarbeitet die übergebene Eingabe und erstellt ein Dictionary für einen Datensatz,
@@ -24,7 +23,7 @@ def main():
         # Verarbeitet die Eingabe und erstellt Datensätze für den Bulk Insert
         records = process_input(input_arg)
     else:
-        records = [{'error': "Kein Argument übergeben."}]
+        records = {}
 
     # Ausgabe der Datensätze als JSON, vorbereitet für den Bulk Insert
     print(json.dumps(records, ensure_ascii=False))
@@ -32,3 +31,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
