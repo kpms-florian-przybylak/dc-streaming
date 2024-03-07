@@ -1,10 +1,12 @@
+import asyncio
 import json
-import subprocess
 import os
+import importlib.util
+import time
+from typing import List
 
 from helpers.custom_logging_helper import logger
-from typing import Dict, List
-import time
+
 # Ermitteln des Basisverzeichnisses des Projekts
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -14,23 +16,22 @@ python_interpreter = os.getenv('PYTHON_INTERPRETER_PATH', 'python3')  # Standard
 
 
 class RuleChain:
-    def __init__(self, chains_config, targets=None, mqtt_clients=None, db_clients=None, redis_client=None):
+    def __init__(self, chains_config, targets=None, mqtt_clients=None, db_clients=None, redis_clients=None):
         self.targets = targets if targets is not None else []
         self.chain = []
-        self.mqtt_clients = mqtt_clients
+        self.mqtt_clients = mqtt_clients if mqtt_clients is not None else {}
+        self.db_clients = db_clients if db_clients is not None else {}
+        self.redis_clients = redis_clients if redis_clients is not None else {}
         self.chains_config = chains_config
         self.initialize_chain()
         self.last_query_time = {}
-        self.db_clients = db_clients
-        self.redis_client = redis_client
 
     def initialize_chain(self):
-        # Initialisieren der Verarbeitungskette basierend auf den übergebenen Schritten
-        # und Vorbereiten der Ziele.
         for chain in self.chains_config:
-            print("Initializing step", chain)
+            logger.info("Initializing step: {}".format(chain['id']))
+
     def get_last_update_time(self, db_id, query):
-        print("get_last_update_time", query, db_id)
+        logger.info("get_last_update_time", query, db_id)
         # Implementiere eine Methode, um den Zeitstempel der letzten relevanten Datenänderung zu ermitteln.
         return time.time()
     async def execute_sql_query(self, query, db_id, input_message):
@@ -48,53 +49,91 @@ class RuleChain:
         else:
             # Keine Änderungen, kein Bedarf, die Abfrage erneut auszuführen
             return input_message
-    async def execute_python_script(self, script_path, input_message):
+
+
+    async def execute_python_script(self, script_path, input_message, client_access):
+        """
+        Dynamically loads and executes a Python script with the specified input message and client objects.
+        This method bypasses the limitations of inter-process communication by directly invoking the script in the same process.
+        """
+        # Construct the full path to the script
         full_script_path = os.path.join(script_dir, 'configs', 'external_scripts', script_path)
-        # Konvertiere das input_message Dictionary in einen JSON-String
-        input_message_str = json.dumps(input_message)
-        logger.info(f"Executing Python script: {input_message}")
+
+        # Attempt to dynamically load the script as a module
         try:
-            completed_process = subprocess.run([python_interpreter, full_script_path, input_message_str], timeout=10,
-                                               capture_output=True, text=True, check=True)
-            if completed_process.returncode != 0:
-                logger.error(f"Error executing script {script_path}: {completed_process.stderr}")
-                return input_message  # Bei einem Fehler die ursprüngliche Nachricht zurückgeben
-            modified_message = json.loads(completed_process.stdout) if completed_process.stdout else input_message
-            return modified_message
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Script execution failed with non-zero exit status: {e.returncode}, {e.stderr}")
-        except subprocess.TimeoutExpired:
-            logger.warning(f"Script execution timed out: {script_path}")
+            spec = importlib.util.spec_from_file_location("external_module", full_script_path)
+            external_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(external_module)
+        except FileNotFoundError:
+            logger.error(f"The script {script_path} was not found.")
+            return input_message
         except Exception as e:
-            logger.error(f"Unexpected error executing script {script_path}: {str(e)}")
-            return input_message  # Bei einem Fehler die ursprüngliche Nachricht zurückgeben
+            logger.error(f"An error occurred while loading the script {script_path}: {str(e)}")
+            return input_message
+
+        # Prepare the client objects for the script based on 'client_access'
+        clients = self.prepare_clients_for_script(client_access)
+
+        # Execute the unified function in the script
+        try:
+            if asyncio.iscoroutinefunction(external_module.process_message):
+                processed_message = await external_module.process_message(input_message, clients)
+            else:
+                processed_message = external_module.process_message(input_message, clients)
+            return processed_message
+        except AttributeError:
+            logger.error(f"The script {script_path} does not have a 'process_message' function.")
+        except Exception as e:
+            logger.error(f"An error occurred while executing the script {script_path}: {str(e)}")
+
+        return input_message
+
+    def prepare_clients_for_script(self, client_access):
+        """
+        Prepares a dictionary of actual client instances based on client_access identifiers.
+        """
+        clients_info = {}
+        for client_id in client_access:
+            if client_id in self.mqtt_clients:
+                # Direkte Übergabe der MQTT Client-Instanz
+                clients_info[client_id] = self.mqtt_clients[client_id]
+            elif client_id in self.db_clients:
+                # Direkte Übergabe der DB Client-Instanz
+                clients_info[client_id] = self.db_clients[client_id]
+            elif client_id in self.redis_clients:
+                # Direkte Übergabe der Redis Client-Instanz
+                clients_info[client_id] = self.redis_clients[client_id]
+            else:
+                logger.warning(f"Client ID {client_id} not found among available clients.")
+        return clients_info
 
     async def process_step(self, message, client_id):
-        logger.info("Processing step for client_id: %s with message: %s", client_id, message)
-        # Umwandlung der ursprünglichen Nachricht in ein Wörterbuch, wenn sie noch nicht eines ist
-        if isinstance(message, str):
-            try:
-                # Versuch, die Zeichenkette als JSON zu interpretieren und in ein Wörterbuch umzuwandeln
-                modified_message = json.loads(message)
-            except json.JSONDecodeError:
-                # Falls die Zeichenkette kein gültiges JSON ist, behandle sie als einfache Nachricht
-                modified_message = {"original_message": message}
-        else:
-            # Wenn die Nachricht bereits ein Wörterbuch ist, direkt verwenden
-            modified_message = message
-
+        """
+        Process each step in the rule chain with modifications to handle client access.
+        """
+        modified_message = message
         chain_ids = self.find_chains_by_client_id(client_id)
         for chain_id in chain_ids:
             chain_config = next((chain for chain in self.chains_config if chain['id'] == chain_id), None)
             if chain_config:
                 for step in chain_config['processing_steps']:
-                    print(step['script_path'], step['type'], type(modified_message))
+                    # Inside the process_step method or wherever you call execute_python_script
+                    if step['type'] == 'python_script':
+                        client_access = step.get('client_access', [])
+                        modified_message = await self.execute_python_script(step['script_path'], modified_message,
+                                                                            client_access)
+
+
+
+                        logger.debug("{}, {}, {}".format(step['script_path'], step['type'], type(modified_message)))
+
                     if step['type'] == 'sql_query':
                         # Angenommen, execute_sql_query aktualisiert das Wörterbuch basierend auf der Abfrage
                         modified_message = await self.execute_sql_query(step['query'], step['id'], modified_message)
                     elif step['type'] == 'python_script':
                         # Angenommen, execute_python_script kann das Wörterbuch als Argument akzeptieren und es aktualisieren
-                        modified_message = await self.execute_python_script(step['script_path'], modified_message)
+                        modified_message = await self.execute_python_script(step['script_path'], modified_message,
+                                                                            client_access)
                     else:
                         logger.warning("Unknown step type: %s", step['type'])
                 await self.forward_to_targets(chain_id, modified_message)

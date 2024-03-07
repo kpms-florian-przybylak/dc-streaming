@@ -75,11 +75,11 @@ class DBClient:
             # Verwende `yield_per` für Streaming
             result_proxy = self.session.execute(text(query)).yield_per(100)  # Anpassen nach Bedarf
             for row in result_proxy:
-                logger.debug(f"Row data: {row}")
+                #logger.debug(f"Row data: {row}")
                 try:
                     # Convert the row to a dictionary
                     row_dict = row._asdict()
-                    logger.debug(f"Row as dict: {row_dict}")
+                    #logger.debug(f"Row as dict: {row_dict}")
                     yield row_dict
                 except Exception as e:
                     logger.error(f"Error converting row to dict: {e}")

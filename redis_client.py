@@ -82,7 +82,6 @@ class RedisClient:
         """
         Sets a value in Redis under a specified key.
         """
-        self.ensure_connection()
         if self.connection:
             try:
                 self.connection.set(key, value)
@@ -92,22 +91,25 @@ class RedisClient:
         else:
             logger.error("Unable to store the value, as connection to Redis is not available.")
 
-    def get(self, key):
+    async def get(self, key):
         """
-        Retrieves a value from Redis by a specified key.
+        Retrieves a value from Redis by a specified key asynchronously and ensures the method is always awaitable.
         """
-        self.ensure_connection()
-        if self.connection:
-            try:
-                value = self.connection.get(key)
-                if value is not None:
-                    logger.info(f"Value under the key '{key}': {value}")
-                else:
-                    logger.info(f"Key '{key}' does not exist in Redis.")
-                return value
-            except Exception as e:
-                logger.error(f"Error retrieving the value: {e}")
-                return None
-        else:
+        if not self.connection:
             logger.error("Unable to retrieve the value, as connection to Redis is not available.")
             return None
+
+        try:
+            value = self.connection.get(key)
+            if value is not None:
+                logger.info(f"Value under the key '{key}': {value}")
+            else:
+                logger.info(f"Key '{key}' does not exist in Redis.")
+        except Exception as e:
+            logger.error(f"Error retrieving the value: {e}")
+            value = None
+
+        # Der Trick hier ist, `asyncio.sleep(0)` zu nutzen, um sicherzustellen,
+        # dass die Methode eine Coroutine bleibt, unabhängig vom Wert von `value`.
+        await asyncio.sleep(0)
+        return value
