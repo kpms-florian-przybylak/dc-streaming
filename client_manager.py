@@ -37,8 +37,11 @@ class ClientManager:
         # they should be awaited or scheduled with asyncio.create_task if they are intended to run concurrently.
         await asyncio.gather(
             self.subscribe_to_topics(),
-            self.initialize_db_polling()
+            self.initialize_db_polling(),
+            self.initialize_db_triggers()
         )
+
+
     async def initialize_all_clients(self):
         """
         A revised method to correctly initialize clients asynchronously.
@@ -95,21 +98,36 @@ class ClientManager:
             logger.success(f"DB client for {db_client_config['id']} initialized.")
             asyncio.create_task(db_client.start_periodic_verification(30))
 
-
-
-    async def initialize_db_polling(self):
-        """
-        Initializes polling for configured PostgreSQL queries.
-        """
+    async def initialize_db_triggers(self):
         for chain_config in self.specific_configs["data_processing_chains"]:
             for source in chain_config.get("sources", []):
                 if source["client_type"] == "postgres":
                     db_client = self.db_clients[source["client_id"]]
-                    polling_interval = source.get("polling_interval", 60)  # Standardintervall: 60 Sekunden
+                    triggers = source.get("triggers")
+                    if triggers:
+                        for trigger in triggers:
+                            asyncio.create_task(db_client.listen_for_triggers(trigger, self.rule_chain))
+                            logger.info(f"Initialized DB trigger {trigger.get('trigger_name', '')}")
+                    else:
+                        # Logge Warnung, falls keine Trigger definiert sind
+                        logger.warning(f"No triggers defined for client {source['client_id']}.")
+
+    async def initialize_db_polling(self):
+        for chain_config in self.specific_configs["data_processing_chains"]:
+            for source in chain_config.get("sources", []):
+                if source["client_type"] == "postgres":
+                    db_client = self.db_clients[source["client_id"]]
+                    polling_interval = source.get(
+                        "polling_interval")  # Entfernt Standardwert, um das Fehlen zu überprüfen
                     query = source.get("query")
-                    # Startet das Polling für die SQL-Abfrage
-                    asyncio.create_task(db_client.start_polling_query(query, polling_interval, self.rule_chain))
-                    logger.info(f"Initialized polling for query '{query}' every {polling_interval} seconds.")
+                    if query and polling_interval:
+                        # Startet das Polling für die SQL-Abfrage, falls vorhanden
+                        asyncio.create_task(
+                            db_client.start_polling_query(query, int(polling_interval), self.rule_chain))
+                        logger.info(f"Initialized polling for query '{query}' every {polling_interval} seconds.")
+                    else:
+                        # Logge Warnung, falls notwendige Informationen fehlen
+                        logger.warning(f"Missing 'query', 'polling_interval' or no polling defined for client {source['client_id']}.")
 
     async def subscribe_to_topics(self):
         topics_by_client = {}  # Sammeln von Topics nach Client-ID

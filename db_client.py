@@ -1,4 +1,7 @@
 import asyncio
+import json
+
+import asyncpg
 
 from sqlalchemy import create_engine, exc, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -62,6 +65,103 @@ class DBClient:
     async def connect_and_verify(self):
         await self.connect()
         await self.verify_connection_async()
+
+    async def create_trigger(self, trigger_config):
+        try:
+            # Erstellen der Trigger-Funktion
+            create_function_sql = text(f"""
+            CREATE OR REPLACE FUNCTION notify_{trigger_config['trigger_name']}()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                IF ({trigger_config['condition']}) THEN
+                    PERFORM pg_notify('{trigger_config['trigger_name']}', row_to_json(NEW)::text);
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            """)
+
+            # Erstellen des Triggers
+            create_trigger_sql = text(f"""
+            DROP TRIGGER IF EXISTS {trigger_config['trigger_name']}_trigger ON {trigger_config['table']};
+            CREATE TRIGGER {trigger_config['trigger_name']}_trigger
+            AFTER INSERT OR UPDATE ON {trigger_config['table']}
+            FOR EACH ROW EXECUTE FUNCTION notify_{trigger_config['trigger_name']}();
+            """)
+            print(create_trigger_sql, create_function_sql)
+            # Ausführen der SQL-Befehle über die SQLAlchemy-Engine
+            with self.engine.begin() as conn:
+                conn.execute(create_function_sql)
+                conn.execute(create_trigger_sql)
+                logger.info(f"Trigger {trigger_config['trigger_name']} created on {trigger_config['table']}.")
+
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to create trigger {trigger_config['trigger_name']} on {trigger_config['table']}: {e}")
+
+    async def trigger_exists(self, trigger_name, table_name):
+        check_trigger_sql = text(f"""
+        SELECT EXISTS (
+            SELECT 1
+            FROM pg_trigger
+            WHERE NOT tgisinternal
+            AND tgname = '{trigger_name}_trigger'
+        );
+        """)
+        result = self.session.execute(check_trigger_sql)
+        return result.scalar()
+
+    async def listen_to_notifications(self, trigger_name, processing_chain):
+        """
+        Modified to accept a processing_chain parameter and use a dynamically created handler.
+        """
+        try:
+            conn = await asyncpg.connect(self.connection_string)
+
+            async def notification_handler(conn, pid, channel, payload):
+                """
+                Handle notifications with access to the processing_chain.
+                """
+                try:
+                    notification_data = json.loads(payload)
+                    logger.info(f"Notification received on channel {channel}: {notification_data}")
+                    # Pass the data to the processing chain
+                    await processing_chain.process_step(notification_data, self.client_id)
+                except json.JSONDecodeError:
+                    logger.error(f"Error decoding JSON from notification on channel {channel}")
+                except Exception as e:
+                    logger.error(f"Error handling notification from {channel}: {e}")
+
+            # Use the custom notification_handler that captures processing_chain
+            await conn.add_listener(trigger_name, notification_handler)
+            logger.info(f"DB Client subscribed to {trigger_name} notifications.")
+
+            try:
+                await asyncio.Future()  # Run indefinitely until cancelled or an error occurs
+            finally:
+                await conn.close()
+                logger.info("DB connection closed.")
+        except Exception as e:
+            logger.error(f"Failed to establish connection for listening to notifications: {e}")
+
+
+
+    async def listen_for_triggers(self, trigger_config, processing_chain):
+        if not self.engine:
+            logger.info("Engine is not established. Attempting to reconnect and verify.")
+            await self.connect()
+
+        trigger_name = trigger_config['trigger_name']
+        table_name = trigger_config['table']
+
+        # Überprüfe, ob der Trigger bereits existiert
+        exists = await self.trigger_exists(trigger_name, table_name)
+        if not exists:
+            logger.info(f"Trigger {trigger_name} does not exist. Creating now.")
+        else:
+            logger.info(f"Trigger {trigger_name} already exists. Recreaing...")
+        await self.create_trigger(trigger_config)
+
+        await self.listen_to_notifications(trigger_name, processing_chain)
 
     def execute_query(self, query):
         """

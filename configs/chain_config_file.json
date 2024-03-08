@@ -25,30 +25,28 @@
     "data_processing_chains": [
         {
             "id": "chain1",
-            "sources": [
-                {
+            "sources": [{
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "raw"
+                },{
                     "client_type": "postgres",
                     "client_id": "db1",
-                    "polling_interval": 100000,
-                    "query": "SELECT id, machine_number from data_pipeline.connections"
-                },
-                {
-                    "client_type": "postgres",
-                    "client_id": "db1",
-                    "polling_interval": 100000,
-                    "query": "SELECT entity_id, group_id, connection_id from data_pipeline.entity_objects"
+                    "triggers": [
+                        {
+                            "trigger_name": "entity_objects_changes",
+                            "table": "data_pipeline.entity_objects",
+                            "condition": "NEW.group_id IS NOT NULL",
+                            "action": "NOTIFY entity_objects_changes, row_to_json(NEW)::text"
+                        }
+                    ]
                 }
             ],
             "processing_steps": [
                 {
                     "type": "python_script",
-                    "script_path": "manage_metadata.py",
-                    "client_access": ["redis1", "db1"]
-                },
-                {
-                    "type": "python_script",
-                    "script_path": "map_hmi_data_to_odt.py",
-                    "client_access": []
+                    "script_path": "transfer_plc_to_hmi_model.py",
+                    "client_access": ["redis1"]
                 }
             ],
             "targets": [{
