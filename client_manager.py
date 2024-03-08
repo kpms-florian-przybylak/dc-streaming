@@ -174,7 +174,11 @@ class ClientManager:
         """
         Sets up rule chains with steps, targets, and clients.
         """
+
         self.rule_chain = RuleChain(self.specific_configs["data_processing_chains"], self.targets, self.mqtt_clients, self.db_clients, self.redis_clients)
 
+
+        for client_id, mqtt_client in self.mqtt_clients.items():
+            mqtt_client.set_processing_chain(self.rule_chain)
 
 
