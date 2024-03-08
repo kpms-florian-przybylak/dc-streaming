@@ -46,7 +46,7 @@
                 {
                     "type": "python_script",
                     "script_path": "transfer_plc_to_hmi_model.py",
-                    "client_access": ["redis1"]
+                    "client_access": ["redis1", "db1"]
                 }
             ],
             "targets": [{
