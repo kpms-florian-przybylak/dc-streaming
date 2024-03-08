@@ -1,6 +1,5 @@
 import asyncio
 import aiomqtt
-from aiomqtt.client import ClientT
 
 from helpers.custom_logging_helper import logger
 
