@@ -88,7 +88,7 @@ class DBClient:
             AFTER INSERT OR UPDATE ON {trigger_config['table']}
             FOR EACH ROW EXECUTE FUNCTION notify_{trigger_config['trigger_name']}();
             """)
-            print(create_trigger_sql, create_function_sql)
+
             # Ausführen der SQL-Befehle über die SQLAlchemy-Engine
             with self.engine.begin() as conn:
                 conn.execute(create_function_sql)
