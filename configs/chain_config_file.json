@@ -28,7 +28,11 @@
             "sources": [{
                     "client_type": "mqtt",
                     "client_id": "mqtt1",
-                    "topic": "raw"
+                    "topic": "odt_raw"
+                },{
+                    "client_type": "mqtt",
+                    "client_id": "mqtt1",
+                    "topic": "sectiondata"
                 },{
                     "client_type": "postgres",
                     "client_id": "db1",
@@ -45,7 +49,7 @@
             "processing_steps": [
                 {
                     "type": "python_script",
-                    "script_path": "transfer_plc_to_hmi_model.py",
+                    "script_path": "odt-data-processing.py",
                     "client_access": ["redis1", "db1"]
                 }
             ],
