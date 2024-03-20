@@ -23,12 +23,39 @@ class RuleChain:
         self.db_clients = db_clients if db_clients is not None else {}
         self.redis_clients = redis_clients if redis_clients is not None else {}
         self.chains_config = chains_config
-        self.initialize_chain()
         self.last_query_time = {}
 
-    def initialize_chain(self):
+
+
+    async def initialize_external_scripts(self):
         for chain in self.chains_config:
-            logger.info("Initializing step: {}".format(chain['id']))
+            for step in chain.get('processing_steps', []):
+                if step['type'] == 'python_script':
+                    client_access = step.get('client_access', {})
+                    await self.initialize_python_script(step['script_path'], client_access)
+
+    async def initialize_python_script(self, script_path, client_access):
+        full_script_path = os.path.join(script_dir, 'configs', 'external-scripts', script_path)
+        try:
+            spec = importlib.util.spec_from_file_location("external_module", full_script_path)
+            external_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(external_module)
+
+            clients = self.prepare_clients_for_script(client_access)
+
+            if hasattr(external_module, 'initialize'):
+                logger.info(f"Initialization of script {script_path}...")
+                # Set a timeout for the initialization
+                timeout = 10  # 10 seconds
+                if asyncio.iscoroutinefunction(external_module.initialize):
+                    await asyncio.wait_for(external_module.initialize(clients), timeout)
+                else:
+                    external_module.initialize(clients)
+
+        except asyncio.TimeoutError:
+            logger.error(f"Initialization of script {script_path} timed out.")
+        except Exception as e:
+            logger.error(f"Error initializing Python script {script_path}: {str(e)}")
 
     def get_last_update_time(self, db_id, query):
         logger.info("get_last_update_time", query, db_id)
@@ -50,14 +77,13 @@ class RuleChain:
             # Keine Änderungen, kein Bedarf, die Abfrage erneut auszuführen
             return input_message
 
-
     async def execute_python_script(self, script_path, input_message, client_access):
         """
         Dynamically loads and executes a Python script with the specified input message and client objects.
         This method bypasses the limitations of inter-process communication by directly invoking the script in the same process.
         """
         # Construct the full path to the script
-        full_script_path = os.path.join(script_dir, 'configs', 'external_scripts', script_path)
+        full_script_path = os.path.join(script_dir, 'configs', 'external-scripts', script_path)
 
         # Attempt to dynamically load the script as a module
         try:
@@ -65,26 +91,33 @@ class RuleChain:
             external_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(external_module)
         except FileNotFoundError:
-            logger.error(f"The script {script_path} was not found.")
+            logger.error(f"The script {script_path} was not found at {full_script_path}.")
             return input_message
         except Exception as e:
-            logger.error(f"An error occurred while loading the script {script_path}: {str(e)}")
+            logger.error(f"An error occurred while loading the script {script_path} from {full_script_path}: {e}")
             return input_message
 
         # Prepare the client objects for the script based on 'client_access'
         clients = self.prepare_clients_for_script(client_access)
 
+        # Before executing, log the module's attributes for debugging
+        #logger.debug(f"Loaded module attributes: {dir(external_module)}")
+
         # Execute the unified function in the script
         try:
-            if asyncio.iscoroutinefunction(external_module.process_message):
-                processed_message = await external_module.process_message(input_message, clients)
+            if hasattr(external_module, 'process_message'):
+                if asyncio.iscoroutinefunction(external_module.process_message):
+                    processed_message = await external_module.process_message(input_message, clients)
+                else:
+                    processed_message = external_module.process_message(input_message, clients)
+                return processed_message
             else:
-                processed_message = external_module.process_message(input_message, clients)
-            return processed_message
-        except AttributeError:
-            logger.error(f"The script {script_path} does not have a 'process_message' function.")
+                raise AttributeError("process_message function not found")
+        except AttributeError as ae:
+            logger.error(f"The script {script_path} does not have a 'process_message' function: {ae}")
         except Exception as e:
-            logger.error(f"An error occurred while executing the script {script_path}: {str(e)}")
+            logger.error(
+                f"An error occurred while executing the 'process_message' function in the script {script_path}: {e}")
 
         return input_message
 
@@ -117,37 +150,33 @@ class RuleChain:
             chain_config = next((chain for chain in self.chains_config if chain['id'] == chain_id), None)
             if chain_config:
                 for step in chain_config['processing_steps']:
-                    # Inside the process_step method or wherever you call execute_python_script
+                    client_access = step.get('client_access', [])
+
                     if step['type'] == 'python_script':
-                        client_access = step.get('client_access', [])
+                        # Executes Python script
                         modified_message = await self.execute_python_script(step['script_path'], modified_message,
                                                                             client_access)
+                        #logger.debug("{}, {}, {}".format(step['script_path'], step['type'], type(modified_message)))
 
-
-
-                        logger.debug("{}, {}, {}".format(step['script_path'], step['type'], type(modified_message)))
-
-                    if step['type'] == 'sql_query':
-                        # Angenommen, execute_sql_query aktualisiert das Wörterbuch basierend auf der Abfrage
+                    elif step['type'] == 'sql_query':
+                        # Execute SQL query logic here
                         modified_message = await self.execute_sql_query(step['query'], step['id'], modified_message)
-                    elif step['type'] == 'python_script':
-                        # Angenommen, execute_python_script kann das Wörterbuch als Argument akzeptieren und es aktualisieren
-                        modified_message = await self.execute_python_script(step['script_path'], modified_message,
-                                                                            client_access)
+
                     else:
                         logger.warning("Unknown step type: %s", step['type'])
+
                 await self.forward_to_targets(chain_id, modified_message)
+
         return modified_message
 
     def find_chains_by_client_id(self, client_id: str) -> List[str]:
-        """Finde alle Chain IDs, die einer gegebenen Client ID entsprechen."""
-        matching_chains = []
+        """Find all unique chain IDs corresponding to a given client ID."""
+        matching_chains = set()  # Using a set to avoid duplicates
         for chain in self.chains_config:
             for source in chain['sources']:
                 if source['client_id'] == client_id:
-                    matching_chains.append(chain['id'])
-        return matching_chains
-
+                    matching_chains.add(chain['id'])
+        return list(matching_chains)  # Converting back to a list for the return
 
     async def forward_to_targets(self, chain_id, message):
         chain_config = next((chain for chain in self.chains_config if chain['id'] == chain_id), None)
@@ -159,7 +188,7 @@ class RuleChain:
                         client = self.mqtt_clients[target['client_id']]
                         message_str = json.dumps(message) if not isinstance(message, str) else message
                         await client.publish_message(target['topic'], message_str)
-                        logger.info(f"Message sent to MQTT {target['client_id']} on topic {target['topic']}")
+                        #logger.debug(f"Message sent to MQTT {target['client_id']} on topic {target['topic']}")
                     except Exception as e:
                         logger.error(
                             f"Error sending MQTT message to {target['client_id']} on topic {target['topic']}: {e}")
@@ -178,8 +207,11 @@ class RuleChain:
                         logger.error(f"Error performing bulk insert for PostgreSQL {target['client_id']}: {e}")
 
     async def handle_incoming_message(self, message, client_id):
+
         payload = message.payload.decode()  # Nimmt an, dass die Nutzlast eine Zeichenkette ist
-        logger.info(f"Received message from client: {client_id} on topic {message.topic}: {payload}")
+        topic = message.topic.value if hasattr(message, 'topic') else None  # Überprüfen, ob das Topic vorhanden ist
+        #logger.debug(f"Received message from client: {client_id} on topic {topic}: {payload}")
+
         try:
             decoded_message = json.loads(payload)
 
@@ -187,8 +219,13 @@ class RuleChain:
             # Falls die Nutzlast kein JSON ist, verwenden Sie die rohe Zeichenkette
             decoded_message = payload
 
+        # Integrieren des Topics in das zu verarbeitende Objekt
+        message_to_process = {
+            'topic': topic,
+            'data': decoded_message
+        }
 
-        processed_data = await self.process_step(decoded_message, client_id)
+        processed_data = await self.process_step(message_to_process, client_id)
         # Finde die zugehörigen Chain IDs für die gegebene Client ID
         chain_ids = self.find_chains_by_client_id(client_id)
         # Iteriere über jede gefundene Chain ID und leite die verarbeitete Nachricht weiter
