@@ -76,11 +76,41 @@ async def initialize_group_data(redis_client, db_client):
             logger.error(f"Unexpected error in get_group_data: {e}")
             raise
         logger.info("Initial group data load and cache update completed.")
+async def update_last_section_id_in_redis(redis_client, db_client):
+    """
+    Fetches the last section ID from the database using DBClient and updates a Redis entry with it.
+    This function handles the case where the table might be empty.
+    """
+    # Define the query to fetch the last section ID
+    query = "SELECT MAX(id) as last_section_id FROM public.section"
+
+    try:
+        result_stream = db_client.execute_query(query)
+        result = next(result_stream, None)  # Attempt to fetch the first (and only) row from the generator
+
+        if result is not None and result['last_section_id'] is not None:
+            last_section_id = result['last_section_id']
+            # Update Redis asynchronously with the last section ID
+            await redis_client.set("last_section_id", custom_json_dumps(last_section_id))
+            logger.info(f"Updated Redis with the last section ID: {last_section_id}")
+        else:
+            # The table might be empty or the query failed to fetch the expected result
+            # Decide on your handling here. For example, logging and setting a placeholder or skipping.
+            logger.info("The section table is empty or the last section ID could not be determined.")
+            # Optional: Set a placeholder or default value in Redis if needed
+            # await redis_client.set("last_section_id", "default_value")
+    except Exception as e:
+        logger.error(f"Error updating last section ID in Redis: {e}")
+
+
+
 
 async def initialize(clients):
     db_client = clients['db1']
+    batchdata_db_client = clients["db2"]
     redis_client = clients['redis1']
     await initialize_group_data(redis_client, db_client)
+    await update_last_section_id_in_redis(redis_client, batchdata_db_client)
     return
 async def process_message(input_message, clients):
     """
@@ -91,7 +121,8 @@ async def process_message(input_message, clients):
     topic = input_message.get("topic", None)  # Extrahiert das Topic aus der eingehenden Nachricht
 
     if topic == 'sectiondata':
-        section_id = input_message.get("id")
+        payload = input_message.get("data")
+        section_id = payload.get("id")
         if section_id is not None:
             redis_client.set("current_section_id", custom_json_dumps(section_id))
             logger.info(f"Section ID {section_id} set as current_section_id in Redis.")

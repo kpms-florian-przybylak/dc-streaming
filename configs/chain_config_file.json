@@ -12,6 +12,10 @@
         {
             "id": "db1",
             "connection_string": "postgresql://postgres:postgres@192.168.10.100/odtdata"
+        },
+        {
+            "id": "db2",
+            "connection_string": "postgresql://postgres:postgres@192.168.10.100/batchdata"
         }
     ],
     "redis_clients": [
@@ -50,7 +54,7 @@
                 {
                     "type": "python_script",
                     "script_path": "odt-data-processing.py",
-                    "client_access": ["redis1", "db1"]
+                    "client_access": ["redis1", "db1", "db2"]
                 }
             ],
             "targets": [{
