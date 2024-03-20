@@ -37,7 +37,7 @@ class DBClient:
         while True:
             try:
                 await self.verify_connection_async()
-                logger.info("Connection verification successful.")
+                #logger.debug("Connection verification successful.")
             except Exception as e:
                 logger.error(f"Connection verification failed: {e}")
             await asyncio.sleep(interval)
@@ -47,7 +47,7 @@ class DBClient:
             try:
                 # Versuche, eine einfache Abfrage auszuführen, um die Verbindung zu überprüfen
                 self.session.execute(text("SELECT 1"))
-                logger.info(f"Database connection verified. Client ID: {self.client_id}")
+                #logger.debug(f"Database connection verified. Client ID: {self.client_id}")
                 return
             except exc.SQLAlchemyError as e:
                 logger.error(f"Failed to verify database connection: {e}. Client ID: {self.client_id}")
@@ -142,9 +142,6 @@ class DBClient:
                 logger.info("DB connection closed.")
         except Exception as e:
             logger.error(f"Failed to establish connection for listening to notifications: {e}")
-
-
-
     async def listen_for_triggers(self, trigger_config, processing_chain):
         if not self.engine:
             logger.info("Engine is not established. Attempting to reconnect and verify.")
@@ -158,7 +155,7 @@ class DBClient:
         if not exists:
             logger.info(f"Trigger {trigger_name} does not exist. Creating now.")
         else:
-            logger.info(f"Trigger {trigger_name} already exists. Recreaing...")
+            logger.info(f"Trigger {trigger_name} already exists. Recreating...")
         await self.create_trigger(trigger_config)
 
         await self.listen_to_notifications(trigger_name, processing_chain)
@@ -197,7 +194,7 @@ class DBClient:
                     # Verwende den angepassten Encoder für die JSON-Serialisierung
                     json_result = custom_json_dumps(result)
                     await processing_chain.process_step(json_result, self.client_id)
-                logger.info(f"Polling query executed: {query}")
+                # logger.debug(f"Polling query executed: {query}")
             except Exception as e:
                 logger.error(f"Failed to execute polling query: {e}")
             await asyncio.sleep(polling_interval)
@@ -214,7 +211,7 @@ class DBClient:
                 for stmt in statements:
                     self.session.execute(stmt)
                 self.session.commit()  # Commit nach dem Ausführen der Batches
-                logger.info(f"Bulk insert completed for {len(batch_data)} records.")
+                #logger.debug(f"Bulk insert completed for {len(batch_data)} records.")
         except Exception as e:
             logger.error(f"Failed to execute bulk insert: {e}")
             self.session.rollback()  # Rollback im Fehlerfall
