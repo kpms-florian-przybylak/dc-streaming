@@ -85,11 +85,24 @@ class RedisClient:
         if self.connection:
             try:
                 self.connection.set(key, value)
-                logger.info(f"Value '{value}' was stored under the key '{key}'.")
+                #logger.debug(f"Value '{value}' was stored under the key '{key}'.")
             except Exception as e:
                 logger.error(f"Error saving the value: {e}")
         else:
             logger.error("Unable to store the value, as connection to Redis is not available.")
+
+    def delete(self, key):
+        """
+        Removes a key from Redis.
+        """
+        if self.connection:
+            try:
+                self.connection.delete(key)
+                #logger.debug(f"Key '{key}' was removed from Redis.")
+            except Exception as e:
+                logger.error(f"Error removing the key '{key}': {e}")
+        else:
+            logger.error("Unable to remove the key, as connection to Redis is not available.")
 
     async def get(self, key):
         """
@@ -102,9 +115,11 @@ class RedisClient:
         try:
             value = self.connection.get(key)
             if value is not None:
-                logger.info(f"Value under the key '{key}': {value}")
+                #logger.debug(f"Value under the key '{key}': {value}")
+                pass
             else:
-                logger.info(f"Key '{key}' does not exist in Redis.")
+                #logger.debug(f"Key '{key}' does not exist in Redis.")
+                pass
         except Exception as e:
             logger.error(f"Error retrieving the value: {e}")
             value = None
