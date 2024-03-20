@@ -32,10 +32,11 @@ class ClientManager:
         # subscribing to topics, and initializing DB polling.
         # Note: setup_rule_chains is not async and does not need to be awaited.
         self.setup_rule_chains()
-
         # Since subscribe_to_topics and initialize_db_polling are async,
         # they should be awaited or scheduled with asyncio.create_task if they are intended to run concurrently.
+
         await asyncio.gather(
+            self.rule_chain.initialize_external_scripts(),
             self.subscribe_to_topics(),
             self.initialize_db_polling(),
             self.initialize_db_triggers()
@@ -99,6 +100,7 @@ class ClientManager:
             asyncio.create_task(db_client.start_periodic_verification(30))
 
     async def initialize_db_triggers(self):
+        logger.debug("Starting DB trigger initialization process...")
         for chain_config in self.specific_configs["data_processing_chains"]:
             for source in chain_config.get("sources", []):
                 if source["client_type"] == "postgres":
@@ -106,11 +108,13 @@ class ClientManager:
                     triggers = source.get("triggers")
                     if triggers:
                         for trigger in triggers:
+                            logger.debug(
+                                f"Initializing trigger {trigger.get('trigger_name', 'N/A')} for client {source['client_id']}...")
                             asyncio.create_task(db_client.listen_for_triggers(trigger, self.rule_chain))
                             logger.info(f"Initialized DB trigger {trigger.get('trigger_name', '')}")
                     else:
-                        # Logge Warnung, falls keine Trigger definiert sind
                         logger.warning(f"No triggers defined for client {source['client_id']}.")
+        logger.debug("DB trigger initialization process completed.")
 
     async def initialize_db_polling(self):
         for chain_config in self.specific_configs["data_processing_chains"]:
@@ -169,16 +173,14 @@ class ClientManager:
         logger.info(f"Subscribing client '{client.client_id}' to keepalive topic: {keepalive_topic}")
         await client.subscribe_to_topics([keepalive_topic])
 
-
     def setup_rule_chains(self):
-        """
-        Sets up rule chains with steps, targets, and clients.
-        """
+        self.rule_chain = RuleChain(self.specific_configs["data_processing_chains"], self.targets, self.mqtt_clients,
+                                    self.db_clients, self.redis_clients)
 
-        self.rule_chain = RuleChain(self.specific_configs["data_processing_chains"], self.targets, self.mqtt_clients, self.db_clients, self.redis_clients)
 
 
         for client_id, mqtt_client in self.mqtt_clients.items():
             mqtt_client.set_processing_chain(self.rule_chain)
+
 
 
