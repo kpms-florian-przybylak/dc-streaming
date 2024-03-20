@@ -59,5 +59,5 @@ class MQTTClient:
 
 
     async def publish_message(self, topic, message):
-        logger.info(f"Publishing message to topic {topic}...")
+        #logger.debug(f"Publishing message to topic {topic}...")
         await self.client.publish(topic, message)
