@@ -103,7 +103,44 @@ async def update_last_section_id_in_redis(redis_client, db_client):
         logger.error(f"Error updating last section ID in Redis: {e}")
 
 
+async def format_product_data(input_message, redis_client):
+    """
+    Formats the incoming product data message according to the specified structure,
+    including the current section_id from Redis.
+    """
+    # Extract product_id and other data from the input message
+    original_data = input_message.get("data", [])
 
+    product_id = input_message.get("product_id", None)
+    # Fetch the current section_id from Redis
+    current_section_id = await redis_client.get("current_section_id")
+    if current_section_id is not None:
+        current_section_id = custom_json_loads(current_section_id)
+
+    # Prepare the formatted product data
+    formatted_data = {
+        "object_id": product_id,
+        "section_id": current_section_id,
+        "overwrittenvalues": []
+    }
+
+    # Convert each item in original_data to the new structure with group_id and val
+    for item in original_data:
+        if isinstance(item, dict):
+            for key, value in item.items():
+                formatted_data["overwrittenvalues"].append({
+                    "group_id": key,
+                    "val": value
+                })
+        else:
+            logger.error(f"Unexpected item format in original data: {item}")
+
+    # Add any additional fixed fields from the input_message if necessary
+    for key in ["machinenumber", "record_id", "inserttime", "readytodelete"]:
+        if key in input_message:
+            formatted_data[key] = input_message[key]
+
+    return formatted_data
 
 async def initialize(clients):
     db_client = clients['db1']
@@ -135,28 +172,8 @@ async def process_message(input_message, clients):
         logger.info("Processed database change trigger message.")
     else:
         payload = input_message.get("data", {})
-
-        product_data = payload
-
-        # Prepare a new product data list to hold updated items where keys exist in Redis
-        updated_product_data = []
-
-        # Iterate through each item in product data
-        for item in product_data.get("data",{}):
-            if not isinstance(item, dict):
-                logger.error(f"Unexpected item format in product_data: {item}, {product_data}")
-                continue
-            for key, value in item.items():
-                # Attempt to retrieve a new key from Redis using the original key
-                new_key = await redis_client.get(key)
-                if new_key:
-                    new_key_decoded = custom_json_loads(new_key)  # Assuming the stored value is JSON serialized
-                    # Add the item with the new key to the updated product data
-                    updated_product_data.append({new_key_decoded: value})
-
-        # Only include items in the output where keys were found in Redis
-        input_message['data'] = updated_product_data
-
+        input_message = await format_product_data(payload, redis_client)
+        #logger.debug(f"Formatted product data: {input_message}")
         #logger.debug("Processed product data with keys updated to existing Redis mappings.")
 
     return input_message
